@@ -1,0 +1,20 @@
+[project]
+name = "unslop-audit"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "LuminWolf", email = "140178827+LuminWolf@users.noreply.github.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "pyparsing>=3.3.3",
+]
+
+[[tool.uv.index]]
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true
+
+[build-system]
+requires = ["uv_build>=0.12.8,<0.13.0"]
+build-backend = "uv_build"
