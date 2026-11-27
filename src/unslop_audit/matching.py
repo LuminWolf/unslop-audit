@@ -2,6 +2,8 @@
 
 import re
 
+from .views import ScanView
+
 
 CLASS_ATTR = re.compile(
     r'(?:class|className)\s*=\s*(["\'])(.*?)\1', re.I | re.S
@@ -20,8 +22,9 @@ class Matcher:
         self.guard = guard
 
     def find(self, text):
-        for match in self.regex.finditer(text):
-            if self.guard is None or self.guard(text, match):
+        target = text.text if isinstance(text, ScanView) else text
+        for match in self.regex.finditer(target):
+            if self.guard is None or self.guard(target, match):
                 yield match.start(), match.end()
 
 
@@ -37,7 +40,8 @@ class ClassMatcher:
         self.guard = guard
 
     def find(self, text):
-        for attribute_match in CLASS_ATTR.finditer(text):
+        target = text.text if isinstance(text, ScanView) else text
+        for attribute_match in CLASS_ATTR.finditer(target):
             attribute_value, base_offset = attribute_match.group(2), attribute_match.start(2)
             for match in self.regex.finditer(attribute_value):
                 if self.guard is None or self.guard(attribute_value, match):
