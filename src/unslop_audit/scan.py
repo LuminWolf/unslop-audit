@@ -1,10 +1,11 @@
 """文件收集与扫描。"""
 
+import sys
 from pathlib import Path
 
-from .matching import mask_comments
 from .models import Dimension, Finding, Severity
 from .rules import EMOJI_RE, RULES
+from .views import ScanView
 
 
 SUPPORTED_EXTS = {".html", ".htm", ".css", ".scss", ".less",
@@ -43,25 +44,36 @@ def scan_file(filepath, rules=None):
     except Exception:
         return findings
 
-    masked = mask_comments(text)
+    suffix = Path(filepath).suffix.lower()
+    if suffix in {".tsx", ".jsx"}:
+        view = ScanView.from_tsx(text)
+        if view is None:
+            print(f"WARNING: TSX AST 视图不可用，回退到文本视图: {filepath}",
+                  file=sys.stderr)
+            view = ScanView.from_source(text)
+    else:
+        view = ScanView.from_source(text)
+
     lines = text.splitlines()
 
     for rule in rules:
         seen = set()
         for matcher in rule.matchers:
             try:
-                for start, end in matcher.find(masked):
-                    if (start, end) in seen:
+                for start, end in matcher.find(view):
+                    source_start, source_end = view.source_span(start, end)
+                    key = (rule.name, source_start, source_end)
+                    if key in seen:
                         continue
-                    seen.add((start, end))
+                    seen.add(key)
             except Exception:
                 continue
-        for start, end in sorted(seen):
-            line_no = masked[:start].count("\n") + 1
+        for _, source_start, source_end in sorted(seen):
+            line_no = view.line_of(source_start)
             context_line = (
                 lines[line_no - 1]
                 if 0 <= line_no - 1 < len(lines)
-                else masked[start:end]
+                else text[source_start:source_end]
             )
             findings.append(Finding(
                 file=filepath, line=line_no,
@@ -70,22 +82,27 @@ def scan_file(filepath, rules=None):
                 suggestion=rule.suggestion, context=truncate(context_line),
             ))
 
-    # Emoji 专项扫描（按行聚合）。
-    for line_number, line in enumerate(masked.splitlines(), 1):
-        hits = EMOJI_RE.findall(line)
-        if hits:
-            findings.append(Finding(
-                file=filepath, line=line_number,
-                dimension=Dimension.ICONS.value,
-                severity=Severity.HIGH.value,
-                pattern="emoji-as-icon",
-                message="检测到 emoji 装饰字符: " + " ".join(hits[:5]),
-                suggestion="替换为统一图标库的线性图标",
-                context=truncate(
-                    lines[line_number - 1]
-                    if line_number - 1 < len(lines)
-                    else line
-                ),
-            ))
+    # Emoji 专项扫描（按源文件行聚合）。
+    emoji_by_line = {}
+    for match in EMOJI_RE.finditer(view.text):
+        source_start, _ = view.source_span(match.start(), match.end())
+        line_number = view.line_of(source_start)
+        emoji_by_line.setdefault(line_number, []).append(match.group())
+
+    for line_number in sorted(emoji_by_line):
+        hits = emoji_by_line[line_number]
+        findings.append(Finding(
+            file=filepath, line=line_number,
+            dimension=Dimension.ICONS.value,
+            severity=Severity.HIGH.value,
+            pattern="emoji-as-icon",
+            message="检测到 emoji 装饰字符: " + " ".join(hits[:5]),
+            suggestion="替换为统一图标库的线性图标",
+            context=truncate(
+                lines[line_number - 1]
+                if line_number - 1 < len(lines)
+                else ""
+            ),
+        ))
 
     return findings
