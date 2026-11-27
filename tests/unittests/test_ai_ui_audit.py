@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-ai_ui_audit.py（unslop 对齐修复版）的验收测试。
+ai_ui_audit.py（unslop 对齐修复版）的单元测试。
 
-101 个 HTML / CSS 片段逐条写入临时文件，调用修复版 scan_file() 取真实命中。
+101 个 HTML / CSS 片段逐条写入临时文件，调用修复版 scan_file() 取真实命中；
+另有 17 个 TSX fixture 走 AST 视图，验证动态 className / style 对象与注释屏蔽。
 
 用例分类（沿用对齐性审计阶段的 ID 与源码，语义已翻转成"修复后必须通过"）：
   positive  : SKILL 禁止 → 必须命中 expect 里的规则
@@ -13,8 +14,8 @@ ai_ui_audit.py（unslop 对齐修复版）的验收测试。
   dead      : 修复前死规则 → 现在必须命中 expect 里的规则
 
 运行：
-    python3 test_ai_ui_audit.py
-    AUDIT_SCRIPT=/path/to/other/ai_ui_audit.py python3 test_ai_ui_audit.py
+    python3 tests/unittests/test_ai_ui_audit.py
+    AUDIT_SCRIPT=/path/to/other/ai_ui_audit.py python3 tests/unittests/test_ai_ui_audit.py
 """
 
 import atexit
@@ -33,8 +34,11 @@ from pathlib import Path
 
 warnings.simplefilter("ignore")
 
-HERE = Path(__file__).resolve().parent
-AUDIT_SCRIPT = os.environ.get("AUDIT_SCRIPT", str(HERE / "ai_ui_audit.py"))
+HERE = Path(__file__).resolve().parent       # tests/unittests/
+ROOT = HERE.parent.parent                    # 项目根
+FIXTURES = HERE                              # tests/unittests/（TSX fixture 目录）
+SAMPLES = HERE.parent                        # tests/（集成样本所在目录）
+AUDIT_SCRIPT = os.environ.get("AUDIT_SCRIPT", str(ROOT / "ai_ui_audit.py"))
 
 
 def _subprocess_env():
@@ -326,6 +330,75 @@ CASES = [
          'Remove ... shimmer on headings', ext="css"),
 ]
 
+
+@dataclass
+class TSXCase:
+    id: str
+    fixture: str
+    expect: set = field(default_factory=set)
+
+
+TSX_CASES = [
+    TSXCase("X01", "arbitrary-spacing", {"arbitrary-spacing"}),
+    TSXCase("X02", "big-radius", {"big-radius"}),
+    TSXCase("X03", "centered-stack", {"centered-stack"}),
+    TSXCase("X04", "css-gap-off-grid", {"css-gap-off-grid"}),
+    TSXCase("X05", "css-spacing-off-grid", {"css-spacing-off-grid"}),
+    TSXCase("X06", "emoji-as-icon", {"emoji-as-icon"}),
+    TSXCase("X07", "fixed-height-off-grid", {"fixed-height-off-grid"}),
+    TSXCase("X08", "greeting", {"greeting"}),
+    TSXCase("X09", "heavy-weight", {"heavy-weight"}),
+    TSXCase("X10", "hover-scale", {"hover-scale"}),
+    TSXCase("X11", "label-emoji", {"label-emoji"}),
+    TSXCase("X12", "long-label", {"long-label"}),
+    TSXCase("X13", "multi-bang", {"multi-bang"}),
+    TSXCase("X14", "social-proof", {"social-proof"}),
+    TSXCase("X15", "trailing-period", {"trailing-period"}),
+    TSXCase("X16", "tw-gradient-class", {"tw-gradient-class"}),
+    TSXCase("X17", "tw-purple-gradient", {"tw-purple-gradient"}),
+]
+
+
+@dataclass
+class TSXNegativeCase:
+    id: str
+    source: str
+    forbidden: set = field(default_factory=set)
+
+
+TSX_NEGATIVE = [
+    TSXNegativeCase("N01", "// padding: 13px\nexport const C = () => <div />;",
+                    {"css-spacing-off-grid"}),
+    TSXNegativeCase("N02", "/* supercharge */\nexport const C = () => <div />;",
+                    {"marketing-words"}),
+    TSXNegativeCase("N03", "// ✨\nexport const C = () => <div />;",
+                    {"emoji-as-icon"}),
+    TSXNegativeCase("N04",
+                    'const msg = "Supercharge your workflow";\nexport const C = () => <div />;',
+                    {"marketing-words"}),
+    TSXNegativeCase("N05",
+                    "export const C = (props) => <div className={props.className} />;"),
+]
+
+
+def scan_tsx_case(case):
+    path = FIXTURES / case.fixture / "case.tsx"
+    return AUDIT.scan_file(str(path))
+
+
+def scan_tsx_source(case):
+    path = Path(_TMP) / ("%s.tsx" % case.id)
+    path.write_text(case.source, encoding="utf-8")
+    return AUDIT.scan_file(str(path))
+
+
+TSX_FINDINGS = {c.id: scan_tsx_case(c) for c in TSX_CASES}
+TSX_RESULTS = {
+    c.id: {f.pattern for f in TSX_FINDINGS[c.id]} for c in TSX_CASES
+}
+TSX_NEGATIVE_FINDINGS = {c.id: scan_tsx_source(c) for c in TSX_NEGATIVE}
+
+
 def scan_case(case: Case) -> set:
     path = Path(_TMP) / ("%s.%s" % (case.id, case.ext))
     path.write_text(case.source, encoding="utf-8")
@@ -346,7 +419,7 @@ def run_cli(args):
     return subprocess.run(
         [sys.executable, str(AUDIT_SCRIPT)] + args,
         capture_output=True, text=True, encoding="utf-8",
-        cwd=str(HERE), env=_subprocess_env(),
+        cwd=str(ROOT), env=_subprocess_env(),
     )
 
 
@@ -366,12 +439,19 @@ def print_details():
     print("  rules     : %d (含 emoji-as-icon)" % (len(AUDIT.RULES) + 1))
     print("=" * 100 + "\n")
 
+    print("=" * 100)
+    print("  TSX FIXTURES  (AST 视图)")
+    print("=" * 100)
+    for c in TSX_CASES:
+        print("%-5s %-26s %s" % (c.id, c.fixture, _fmt(TSX_RESULTS[c.id])))
+    print("=" * 100 + "\n")
+
 
 class FixedBuildTests(unittest.TestCase):
 
     def test_00_cli_runs_without_crashing(self):
         """P0 验收：脏页不崩，问题写入 CSV，汇总打印到控制台。"""
-        r = run_cli(["sample_slop.html"])
+        r = run_cli([str(SAMPLES / "sample_slop.html")])
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("SUMMARY", r.stdout)
         self.assertNotIn("Traceback", r.stderr)
@@ -439,14 +519,14 @@ class FixedBuildTests(unittest.TestCase):
 
     def test_08_whole_page_scores(self):
         """整页对照：脏页低分、干净页满分，且 JSON 不被 PASS/FAIL 污染。"""
-        dirty = run_cli(["sample_slop.html", "--json"])
+        dirty = run_cli([str(SAMPLES / "sample_slop.html"), "--json"])
         self.assertEqual(dirty.returncode, 0, dirty.stderr)
         rd = json.loads(dirty.stdout)
         self.assertGreater(rd["total_findings"], 0)
         self.assertLess(rd["score"], 40)
         self.assertEqual(set(rd["by_dimension"]), {d.value for d in AUDIT.Dimension})
 
-        clean = run_cli(["sample_clean.html", "--json"])
+        clean = run_cli([str(SAMPLES / "sample_clean.html"), "--json"])
         self.assertEqual(clean.returncode, 0, clean.stderr)
         rc = json.loads(clean.stdout)
         self.assertEqual(rc["total_findings"], 0)
@@ -454,28 +534,91 @@ class FixedBuildTests(unittest.TestCase):
 
     def test_09_fail_on_gate(self):
         """--fail-on 作为 CI 门禁：脏页 exit 2，干净页 exit 0，stdout 始终是纯 JSON。"""
-        dirty = run_cli(["sample_slop.html", "--json", "--fail-on", "high"])
+        dirty = run_cli([str(SAMPLES / "sample_slop.html"), "--json", "--fail-on", "high"])
         self.assertEqual(dirty.returncode, 2)
         self.assertIn("FAIL", dirty.stderr)
         self.assertIsInstance(json.loads(dirty.stdout), dict)  # stdout 未被污染
 
-        clean = run_cli(["sample_clean.html", "--json", "--fail-on", "high"])
+        clean = run_cli([str(SAMPLES / "sample_clean.html"), "--json", "--fail-on", "high"])
         self.assertEqual(clean.returncode, 0)
         self.assertIn("PASS", clean.stderr)
         self.assertIsInstance(json.loads(clean.stdout), dict)
 
     def test_10_original_build_still_broken(self):
         """对照：随包保留的原始脚本在 pyparsing 3.x 下依旧崩溃。"""
-        original = HERE / "reference" / "ai_ui_audit.original.py"
+        original = ROOT / "reference" / "ai_ui_audit.original.py"
         if not original.exists():
             self.skipTest("原始脚本不在包内")
         r = subprocess.run(
-            [sys.executable, str(original), str(HERE / "sample_slop.html"), "--json"],
+            [sys.executable, str(original), str(SAMPLES / "sample_slop.html"), "--json"],
             capture_output=True, text=True, encoding="utf-8",
-            cwd=str(HERE), env=_subprocess_env(),
+            cwd=str(ROOT), env=_subprocess_env(),
         )
         self.assertNotEqual(r.returncode, 0)
         self.assertTrue("ValueError" in r.stderr or "TypeError" in r.stderr, r.stderr)
+
+
+class TSXTests(unittest.TestCase):
+
+    def test_11_tsx_expected_rules_hit(self):
+        """17 个 TSX fixture 均命中对应规则。"""
+
+        bad = []
+        for c in TSX_CASES:
+            miss = c.expect - TSX_RESULTS[c.id]
+            if miss:
+                bad.append("%s 期望 %s，实际 %s" % (
+                    c.id, _fmt(c.expect), _fmt(TSX_RESULTS[c.id])
+                ))
+        self.assertFalse(bad, "\n".join(bad))
+
+    def test_12_tsx_single_finding_per_rule(self):
+        """同一规则在单个 TSX fixture 里只上报一次。"""
+
+        bad = []
+        for c in TSX_CASES:
+            for pattern in sorted(c.expect):
+                count = sum(
+                    1 for f in TSX_FINDINGS[c.id] if f.pattern == pattern
+                )
+                if count != 1:
+                    bad.append("%s/%s 命中 %d 次（应为 1）" % (c.id, pattern, count))
+        self.assertFalse(bad, "\n".join(bad))
+
+    def test_13_tsx_comment_line_not_reported(self):
+        """css-spacing-off-grid：注释里的 padding 不算，只有 style 对象那一行命中。"""
+
+        findings = [
+            f for f in TSX_FINDINGS["X05"]
+            if f.pattern == "css-spacing-off-grid"
+        ]
+        self.assertEqual([f.line for f in findings], [3])
+
+    def test_14_tsx_line_numbers_in_range(self):
+        """虚拟片段的行号必须落回源文件范围。"""
+
+        for c in TSX_CASES:
+            path = FIXTURES / c.fixture / "case.tsx"
+            total = len(path.read_text(encoding="utf-8").splitlines())
+            for f in TSX_FINDINGS[c.id]:
+                self.assertGreaterEqual(f.line, 1, "%s 行号 %d" % (c.id, f.line))
+                self.assertLessEqual(f.line, total, "%s 行号 %d" % (c.id, f.line))
+
+    def test_15_tsx_negative_cases(self):
+        """注释、业务 JS 字符串与未知动态 className 不误报。"""
+
+        bad = []
+        for c in TSX_NEGATIVE:
+            hits = {f.pattern for f in TSX_NEGATIVE_FINDINGS[c.id]}
+            overlap = c.forbidden & hits
+            if overlap:
+                bad.append("%s 不应命中 %s" % (c.id, _fmt(overlap)))
+        self.assertFalse(bad, "\n".join(bad))
+
+    def test_16_tsx_unknown_dynamic_no_crash(self):
+        """className={props.className} 解析不了也要安全返回空结果。"""
+
+        self.assertEqual(TSX_NEGATIVE_FINDINGS["N05"], [])
 
 
 if __name__ == "__main__":

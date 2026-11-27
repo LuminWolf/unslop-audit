@@ -1,7 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""脚本入口：审计逻辑在 src/unslop_audit/ 包中，main 只定义在本脚本。"""
-
 import json
 import sys
 from dataclasses import asdict
@@ -39,8 +35,6 @@ __all__ = [
 
 
 def main(argv=None):
-    """脚本入口：返回退出码，由 __main__ 交给解释器。"""
-
     configure_utf8()
     args = build_args(argv)
 

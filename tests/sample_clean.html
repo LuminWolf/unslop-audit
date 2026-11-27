@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<title>unslop-audit 工作原理</title>
+<style>
+  :root {
+    --bg: #f5f5f4;
+    --surface: #ffffff;
+    --ink: #1c1c1b;
+    --muted: #6b6b69;
+    --line: rgba(28, 28, 27, .08);
+    --accent: #3f6b58;
+    --accent-soft: #eef3f0;
+  }
+  /* rule: css-spacing-off-grid */
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Inter", system-ui, sans-serif;
+    font-weight: 400;
+    line-height: 1.6;
+  }
+  .page {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 48px 24px 64px;
+  }
+  header {
+    padding: 24px 0 32px;
+    border-bottom: 1px solid var(--line);
+  }
+  h1 {
+    font-size: 32px;
+    font-weight: 600;
+    margin: 0 0 12px;
+  }
+  .subtitle {
+    color: var(--muted);
+    font-size: 15px;
+    margin: 0;
+  }
+  section {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 24px;
+    margin-top: 16px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .04);
+  }
+  h2 {
+    font-size: 19px;
+    font-weight: 600;
+    margin: 0 0 12px;
+  }
+  h3 {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0 0 8px;
+  }
+  p { margin: 8px 0; }
+  .muted { color: var(--muted); }
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  /* rule: css-gap-off-grid */
+  .note {
+    background: var(--accent-soft);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-top: 16px;
+  }
+  .list {
+    margin: 12px 0 0;
+    padding-left: 20px;
+  }
+  .list li { margin-bottom: 8px; }
+  .group { margin-top: 16px; }
+  .rule-name { color: var(--accent); }
+  /* rule: fixed-height-off-grid */
+  .badge {
+    display: inline-block;
+    border-radius: 8px;
+    padding: 4px 8px;
+    font-weight: 500;
+  }
+  /* rule: heavy-weight */
+  .strong { font-weight: 600; }
+  /* rule: negative-tracking */
+  .label { letter-spacing: 0.01em; }
+  /* rule: wide-tracking */
+  .nav-label { letter-spacing: 0; }
+  /* rule: uppercase-label */
+  .sentence { text-transform: none; }
+  /* rule: gradient-text */
+  .solid-text { color: var(--ink); }
+  /* rule: italic-emphasis */
+  .upright { font-style: normal; }
+  /* rule: number-format */
+  .figures { font-variant-numeric: tabular-nums; }
+  /* rule: transition-all */
+  .quiet-link {
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-weight: 500;
+    transition: color 150ms ease, background-color 150ms ease;
+  }
+  /* rule: transition-layout */
+  .quiet-link { transition: color 150ms ease, background-color 150ms ease; }
+  /* rule: big-radius */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+  }
+  /* rule: colored-shadow */
+  .raised { box-shadow: 0 2px 8px rgba(0, 0, 0, .04); }
+  /* rule: neon-border */
+  .hairline { border: 1px solid var(--line); }
+  /* rule: radial-or-fixed-bg */
+  .flat { background: var(--bg); }
+  /* rule: purple-bg */
+  .neutral-surface { background: var(--surface); }
+  /* rule: css-purple-gradient */
+  .tonal {
+    background: linear-gradient(#f0f0f0, #e8e8e8);
+  }
+  /* rule: glass-blur */
+  .opaque { opacity: 1; }
+  /* rule: heavy-blur-filter */
+  .sharp { filter: none; }
+  /* rule: translate-tweak */
+  .aligned { transform: none; }
+  /* rule: looping-animation */
+  .still { animation: none; }
+  /* rule: long-animation */
+  .quick { animation: none; }
+  /* rule: hover-scale */
+  .steady:hover { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <h1>unslop-audit 工作原理</h1>
+    <p class="subtitle">把界面源码翻译成规则能消费的文本片段，再把命中位置换算回源文件行号</p>
+  </header>
+
+  <main>
+    <section>
+      <h2>定位与边界</h2>
+      <p>这是一次粗粒度静态预筛，不渲染页面，也不替人做设计判断。它只找能客观判定的模式，把结论交给上层流程继续处理。</p>
+      <p class="muted">截图判断、方向选择、语义级清单和修复顺序都留在工具之外。</p>
+    </section>
+
+    <section>
+      <h2>两条扫描路径</h2>
+      <div class="grid">
+        <div class="panel raised">
+          <h3>文本路径</h3>
+          <p>用于标记语言与样式表。注释被等长空格替换，文本长度与原文一致，行号天然对齐。</p>
+        </div>
+        <div class="panel raised">
+          <h3>AST 路径</h3>
+          <p>用于带 JSX 的源文件。先解析成语法树，再把界面值转换成规则能消费的片段。</p>
+        </div>
+      </div>
+      <div class="note">
+        <p>路径严格按文件后缀分派，两类文件互不干扰。解析不可用时自动降级，不会中断扫描。</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>扫描视图</h2>
+      <p>每个文件都会得到一个视图，包含扫描文本、原文和逐字符的偏移映射。匹配器只在扫描文本上工作，报告里的行号来自偏移映射。</p>
+      <p>映射表让追加出来的片段也能落回真实源码位置，因此行号不会因为片段追加而漂移。</p>
+    </section>
+
+    <section>
+      <h2>注释与屏蔽</h2>
+      <p>所有注释按等长空格屏蔽，换行保留。注释里的样式值不会进入匹配，目录结构也不会被误判成界面文案。</p>
+      <p class="muted">屏蔽只改变内容，不改变长度，这是行号稳定的前提。</p>
+    </section>
+
+    <section>
+      <h2>虚拟片段</h2>
+      <p>AST 路径生成三类片段。类名属性交给类名匹配器，样式声明交给全文匹配器，元素文本交给全文匹配与图形字符兜底。</p>
+      <p>片段之间用换行隔开，避免一条规则跨越两个片段产生误命中。每个片段记住产生它的语法节点。</p>
+    </section>
+
+    <section>
+      <h2>表达式解析的边界</h2>
+      <p>静态字面量、模板串、文件内常量和常见类名辅助调用可以解析。成员访问、外部绑定和调用结果被跳过，不做猜测。</p>
+      <p>解析带深度上限和环检测，遇到无法确定的分支就返回空值，宁可漏检也不误伤。</p>
+    </section>
+
+    <section>
+      <h2>样式对象规范化</h2>
+      <p>驼峰属性名转成连字符形式，数字字面量按长度属性补上单位，零值保持原样。每个声明单独成为片段，映射到对应节点。</p>
+    </section>
+
+    <section>
+      <h2>匹配与去重</h2>
+      <p>匹配器同时接受纯文本和扫描视图，旧调用方式保持不变。命中按规则名和源偏移去重，同一节点不会重复上报。</p>
+      <p>维度与严重级别直接来自规则表，统计与报告共用同一份数据。</p>
+    </section>
+
+    <section>
+      <h2>降级路径</h2>
+      <p>语法错误或依赖缺失时，AST 视图返回空值，扫描器回退到文本视图。告警只写标准错误，标准输出始终保持纯净。</p>
+    </section>
+
+    <section>
+      <h2>覆盖清单</h2>
+      <p class="muted">下面按维度列出全部规则背后的判断原理，每项都配一处遵循该原理的写法</p>
+
+      <div class="group">
+        <h3>间距</h3>
+        <ul class="list">
+          <!-- rule: arbitrary-spacing -->
+          <li><span class="rule-name">arbitrary-spacing</span> · 任意像素间距脱离网格时被标记，标准刻度保留</li>
+          <!-- rule: css-spacing-off-grid -->
+          <li><span class="rule-name">css-spacing-off-grid</span> · 外边距与内边距偏离四像素网格时上报，多值与方向写法同样受约束</li>
+          <!-- rule: css-gap-off-grid -->
+          <li><span class="rule-name">css-gap-off-grid</span> · 行距与列距偏离网格时上报，多值写法逐个检查</li>
+          <!-- rule: fixed-height-off-grid -->
+          <li><span class="rule-name">fixed-height-off-grid</span> · 固定高度不在网格上时被标记，由内容撑开的高度不受影响</li>
+          <!-- rule: translate-tweak -->
+          <li><span class="rule-name">translate-tweak</span> · 用位移掩盖对齐问题时被标记，应先修间距本身</li>
+        </ul>
+      </div>
+
+      <div class="group">
+        <h3>颜色</h3>
+        <ul class="list">
+          <!-- rule: tw-purple-gradient -->
+          <li><span class="rule-name">tw-purple-gradient</span> · 紫罗兰系渐变被标记，中性色阶保留</li>
+          <!-- rule: css-purple-gradient -->
+          <li><span class="rule-name">css-purple-gradient</span> · 跨色相渐变被标记，同色明度微调保留</li>
+          <!-- rule: colored-shadow -->
+          <li><span class="rule-name">colored-shadow</span> · 带色相的阴影与辉光被标记，中性阴影保留</li>
+          <!-- rule: glass-blur -->
+          <li><span class="rule-name">glass-blur</span> · 毛玻璃与背景模糊被标记，实色表面保留</li>
+          <!-- rule: rainbow-gradient -->
+          <li><span class="rule-name">rainbow-gradient</span> · 冷暖跨色相组合被标记，单一色系保留</li>
+          <!-- rule: neon-border -->
+          <li><span class="rule-name">neon-border</span> · 霓虹色边框被标记，低透明度中性描边保留</li>
+          <!-- rule: tw-gradient-class -->
+          <li><span class="rule-name">tw-gradient-class</span> · 渐变类名被标记，同色明度渐变放行</li>
+          <!-- rule: radial-or-fixed-bg -->
+          <li><span class="rule-name">radial-or-fixed-bg</span> · 径向色块与固定背景被标记，纯色背景保留</li>
+        </ul>
+      </div>
+
+      <div class="group">
+        <h3>图标</h3>
+        <ul class="list">
+          <!-- rule: label-emoji -->
+          <li><span class="rule-name">label-emoji</span> · 标签搭配图形字符的组合被标记</li>
+          <!-- rule: icon-inconsistent -->
+          <li><span class="rule-name">icon-inconsistent</span> · 图标尺寸或描边不一致时被标记，统一规格保留</li>
+          <!-- rule: emoji-as-icon -->
+          <li><span class="rule-name">emoji-as-icon</span> · 装饰性图形字符按行聚合上报</li>
+        </ul>
+      </div>
+
+      <div class="group">
+        <h3>文案</h3>
+        <ul class="list">
+          <!-- rule: greeting -->
+          <li><span class="rule-name">greeting</span> · 问候式标题被标记为模板痕迹</li>
+          <!-- rule: marketing-words -->
+          <li><span class="rule-name">marketing-words</span> · 夸张营销措辞被标记，平实描述保留</li>
+          <!-- rule: ai-powered -->
+          <li><span class="rule-name">ai&#8209;powered</span> · 以模型能力为卖点的措辞被单独标记</li>
+          <!-- rule: social-proof -->
+          <li><span class="rule-name">social-proof</span> · 无法核实的社交背书被标记</li>
+          <!-- rule: hype-number -->
+          <li><span class="rule-name">hype-number</span> · 夸张倍数宣称被标记</li>
+          <!-- rule: multi-bang -->
+          <li><span class="rule-name">multi-bang</span> · 界面文案里的感叹号被计数，语法符号排除</li>
+          <!-- rule: placeholder-data -->
+          <li><span class="rule-name">placeholder-data</span> · 明显占位的数据被标记，可信数据保留</li>
+          <!-- rule: trailing-period -->
+          <li><span class="rule-name">trailing-period</span> · 短标签与标题的句号结尾被标记，正文句子排除</li>
+          <!-- rule: long-label -->
+          <li><span class="rule-name">long-label</span> · 冗长占位标签被标记，短标签保留</li>
+          <!-- rule: unqualified-change -->
+          <li><span class="rule-name">unqualified-change</span> · 变化幅度缺少比较对象时被标记</li>
+        </ul>
+      </div>
+
+      <div class="group">
+        <h3>字体</h3>
+        <ul class="list">
+          <!-- rule: heavy-weight -->
+          <li><span class="rule-name">heavy-weight</span> · 过重字重被标记，层级靠字号与色阶表达</li>
+          <!-- rule: negative-tracking -->
+          <li><span class="rule-name">negative-tracking</span> · 负字距被标记，小字可读性优先</li>
+          <!-- rule: wide-tracking -->
+          <li><span class="rule-name">wide-tracking</span> · 宽字距标签被标记，常规字距保留</li>
+          <!-- rule: uppercase-label -->
+          <li><span class="rule-name">uppercase-label</span> · 全大写标签被标记，句首大写风格保留</li>
+          <!-- rule: gradient-text -->
+          <li><span class="rule-name">gradient-text</span> · 透明文字色被标记，实色文字保留</li>
+          <!-- rule: tw-gradient-text -->
+          <li><span class="rule-name">tw-gradient-text</span> · 文字裁剪渐变被标记</li>
+          <!-- rule: italic-emphasis -->
+          <li><span class="rule-name">italic-emphasis</span> · 斜体强调被标记，字号或颜色表达层级</li>
+          <!-- rule: number-format -->
+          <li><span class="rule-name">number-format</span> · 金额格式不统一或缺少等宽数字时被标记</li>
+        </ul>
+      </div>
+
+      <div class="group">
+        <h3>布局</h3>
+        <ul class="list">
+          <!-- rule: centered-stack -->
+          <li><span class="rule-name">centered-stack</span> · 全居中竖排被标记为模板默认布局</li>
+          <!-- rule: narrow-column -->
+          <li><span class="rule-name">narrow-column</span> · 应用被收窄成居中窄列时被标记</li>
+          <!-- rule: too-many-actions -->
+          <li><span class="rule-name">too-many-actions</span> · 首屏并排多个主按钮被标记</li>
+          <!-- rule: rtl-missing -->
+          <li><span class="rule-name">rtl-missing</span> · 从右到左语言缺少方向声明时被标记</li>
+        </ul>
+      </div>
+
+      <div class="group">
+        <h3>细节</h3>
+        <ul class="list">
+          <!-- rule: big-radius -->
+          <li><span class="rule-name">big-radius</span> · 统一大圆角被标记，嵌套圆角递减</li>
+          <!-- rule: badge-pill -->
+          <li><span class="rule-name">badge-pill</span> · 计数徽章使用胶囊形状时被标记</li>
+          <!-- rule: stat-decoration -->
+          <li><span class="rule-name">stat-decoration</span> · 统计卡片里塞入迷你图表被标记</li>
+        </ul>
+      </div>
+
+      <div class="group">
+        <h3>视觉</h3>
+        <ul class="list">
+          <!-- rule: decorative-nouns -->
+          <li><span class="rule-name">decorative-nouns</span> · 装饰性造型词被标记，产品内容承载视觉</li>
+          <!-- rule: purple-bg -->
+          <li><span class="rule-name">purple-bg</span> · 高饱和背景被标记，中性表面保留</li>
+          <!-- rule: heavy-blur-filter -->
+          <li><span class="rule-name">heavy-blur-filter</span> · 大面积模糊装饰被标记</li>
+        </ul>
+      </div>
+
+      <div class="group">
+        <h3>动效</h3>
+        <ul class="list">
+          <!-- rule: looping-animation -->
+          <li><span class="rule-name">looping-animation</span> · 无功能意义的循环动画被标记</li>
+          <!-- rule: transition-all -->
+          <li><span class="rule-name">transition-all</span> · 全量过渡被标记，明确列出属性</li>
+          <!-- rule: transition-layout -->
+          <li><span class="rule-name">transition-layout</span> · 布局属性过渡被标记</li>
+          <!-- rule: hover-scale -->
+          <li><span class="rule-name">hover-scale</span> · 悬停缩放被标记，颜色微变保留</li>
+          <!-- rule: long-animation -->
+          <li><span class="rule-name">long-animation</span> · 过长或无限动画被标记</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+</div>
+</body>
+</html>
