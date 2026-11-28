@@ -1,0 +1,37 @@
+{
+  "rule": "arbitrary-spacing",
+  "cases": [
+    {
+      "name": "tsx-positive",
+      "surface": "tsx",
+      "kind": "class-attr",
+      "filename": "case.tsx",
+      "source": "const A = () => <div className=\"mt-[13px]\" />;",
+      "expect": [{ "rule": "arbitrary-spacing", "line": 1 }]
+    },
+    {
+      "name": "tsx-negative",
+      "surface": "tsx",
+      "kind": "class-attr",
+      "filename": "case.tsx",
+      "source": "const A = () => <div className=\"mt-4 px-2\" />;",
+      "expect": []
+    },
+    {
+      "name": "class-call-positive",
+      "surface": "tsx",
+      "kind": "class-call",
+      "filename": "case.tsx",
+      "source": "const cls = cn(\"mt-[13px]\");",
+      "expect": [{ "rule": "arbitrary-spacing", "line": 1 }]
+    },
+    {
+      "name": "html-positive",
+      "surface": "html",
+      "kind": "class-attr",
+      "filename": "case.html",
+      "source": "<div class=\"mt-[13px]\"></div>",
+      "expect": [{ "rule": "arbitrary-spacing", "line": 1 }]
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "rule": "tw-purple-gradient",
+  "cases": [
+    {
+      "name": "tsx-positive",
+      "surface": "tsx",
+      "kind": "class-attr",
+      "filename": "case.tsx",
+      "source": "const A = () => <div className=\"bg-gradient-to-r from-purple-500\" />;",
+      "expect": [{ "rule": "tw-purple-gradient", "line": 1 }]
+    },
+    {
+      "name": "tsx-negative",
+      "surface": "tsx",
+      "kind": "class-attr",
+      "filename": "case.tsx",
+      "source": "const A = () => <div className=\"bg-slate-100\" />;",
+      "expect": []
+    },
+    {
+      "name": "html-positive",
+      "surface": "html",
+      "kind": "class-attr",
+      "filename": "case.html",
+      "source": "<div class=\"bg-gradient-to-r from-purple-500\"></div>",
+      "expect": [{ "rule": "tw-purple-gradient", "line": 1 }]
+    }
+  ]
+}

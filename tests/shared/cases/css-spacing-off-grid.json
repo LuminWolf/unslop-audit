@@ -1,0 +1,21 @@
+{
+  "rule": "css-spacing-off-grid",
+  "cases": [
+    {
+      "name": "css-positive",
+      "surface": "css",
+      "kind": "css",
+      "filename": "case.css",
+      "source": ".card { padding: 13px; }",
+      "expect": [{ "rule": "css-spacing-off-grid", "line": 1 }]
+    },
+    {
+      "name": "css-negative",
+      "surface": "css",
+      "kind": "css",
+      "filename": "case.css",
+      "source": ".card { padding: 16px; }",
+      "expect": []
+    }
+  ]
+}

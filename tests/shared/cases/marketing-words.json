@@ -1,0 +1,29 @@
+{
+  "rule": "marketing-words",
+  "cases": [
+    {
+      "name": "tsx-positive",
+      "surface": "tsx",
+      "kind": "text",
+      "filename": "case.tsx",
+      "source": "const A = () => <p>Unlock workflows</p>;",
+      "expect": [{ "rule": "marketing-words", "line": 1 }]
+    },
+    {
+      "name": "tsx-negative",
+      "surface": "tsx",
+      "kind": "text",
+      "filename": "case.tsx",
+      "source": "const A = () => <p>Open settings</p>;",
+      "expect": []
+    },
+    {
+      "name": "html-positive",
+      "surface": "html",
+      "kind": "text",
+      "filename": "case.html",
+      "source": "<p>Unlock workflows</p>",
+      "expect": [{ "rule": "marketing-words", "line": 1 }]
+    }
+  ]
+}
