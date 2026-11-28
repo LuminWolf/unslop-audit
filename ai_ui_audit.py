@@ -7,7 +7,7 @@ _SRC = Path(__file__).resolve().parent / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from unslop_audit import (  # noqa: E402
+from unslop_audit import (
     SUPPORTED_EXTS,
     AuditReport,
     DIM_CN,
@@ -19,18 +19,27 @@ from unslop_audit import (  # noqa: E402
     build_args,
     build_report,
     collect_files,
-    compute_score,
     configure_utf8,
     print_report,
     print_summary,
-    scan_file,
+    Scanner,
     write_csv,
 )
 
 __all__ = [
-    "AuditReport", "DIM_CN", "Dimension", "EMOJI_RE", "Finding", "RULES",
-    "Severity", "build_args", "build_report", "collect_files", "compute_score",
-    "main", "print_report", "scan_file",
+    "DIM_CN",
+    "EMOJI_RE",
+    "RULES",
+    "AuditReport",
+    "Dimension",
+    "Finding",
+    "Scanner",
+    "Severity",
+    "build_args",
+    "build_report",
+    "collect_files",
+    "main",
+    "print_report",
 ]
 
 
@@ -40,13 +49,16 @@ def main(argv=None):
 
     files = collect_files(args.target)
     if not files:
-        print("No scannable files found. Supported: " + ", ".join(sorted(SUPPORTED_EXTS)),
-              file=sys.stderr)
+        print(
+            "No scannable files found. Supported: " + ", ".join(sorted(SUPPORTED_EXTS)),
+            file=sys.stderr,
+        )
         return 1
 
+    scanner = Scanner()
     all_findings = []
     for file_path in files:
-        all_findings.extend(scan_file(file_path))
+        all_findings.extend(scanner.scan_file(file_path))
     report = build_report(files, all_findings)
 
     write_csv(all_findings, args.csv)
@@ -61,14 +73,17 @@ def main(argv=None):
         severity_order = ["low", "medium", "high", "critical"]
         blocking_index = severity_order.index(args.fail_on)
         blocking = [
-            finding for finding in all_findings
+            finding
+            for finding in all_findings
             if severity_order.index(finding.severity) >= blocking_index
         ]
         # 走 stderr，避免 --json 模式把 PASS/FAIL 混进 JSON。
         if blocking:
-            print("FAIL: %d issues >= %s" % (len(blocking), args.fail_on), file=sys.stderr)
+            print(
+                f"FAIL: {len(blocking)} issues >= {args.fail_on}", file=sys.stderr
+            )
             return 2
-        print("PASS: no issues >= %s" % args.fail_on, file=sys.stderr)
+        print(f"PASS: no issues >= {args.fail_on}", file=sys.stderr)
 
     return 0
 

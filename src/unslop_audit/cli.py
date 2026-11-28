@@ -19,22 +19,33 @@ def configure_utf8():
             continue
         try:
             reconfigure(encoding="utf-8", errors="replace")
-        except (ValueError, OSError):
+        except ValueError, OSError:
             pass
 
 
 def build_args(argv=None):
     parser = argparse.ArgumentParser(
         description="AI UI Classic Problems Auditor (unslop-aligned) — "
-                    "detect AI-generated UI patterns")
+        "detect AI-generated UI patterns"
+    )
     parser.add_argument("target", help="File or directory to scan")
     parser.add_argument("--json", action="store_true", help="Output as JSON")
     parser.add_argument(
-        "--csv", nargs="?", const=DEFAULT_CSV, default=DEFAULT_CSV, metavar="PATH",
+        "--csv",
+        nargs="?",
+        const=DEFAULT_CSV,
+        default=DEFAULT_CSV,
+        metavar="PATH",
         help="Write findings to CSV (default: ai_ui_audit_report.csv)",
     )
-    parser.add_argument("--fix-hints", action="store_true",
-                        help="Deprecated: fix is always written to the CSV")
-    parser.add_argument("--fail-on", choices=["critical", "high", "medium", "low"],
-                        help="Exit non-zero if issues >= this severity (CI)")
+    parser.add_argument(
+        "--fix-hints",
+        action="store_true",
+        help="Deprecated: fix is always written to the CSV",
+    )
+    parser.add_argument(
+        "--fail-on",
+        choices=["critical", "high", "medium", "low"],
+        help="Exit non-zero if issues >= this severity (CI)",
+    )
     return parser.parse_args(argv)

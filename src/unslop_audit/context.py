@@ -5,15 +5,25 @@ import re
 
 COLOR_TOKEN = re.compile(
     r"#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b|rgba?\([^)]*\)|hsla?\([^)]*\)",
-    re.I,
+    re.IGNORECASE,
 )
 NAMED_HUE = re.compile(
     r"\b(?:purple|violet|fuchsia|indigo|magenta|rebeccapurple|cyan|teal|aqua|"
-    r"blue|pink|orange|green|red|yellow|gold)\b", re.I,
+    r"blue|pink|orange|green|red|yellow|gold)\b",
+    re.IGNORECASE,
 )
 NEON_HEX = (
-    "#a855f7", "#8b5cf6", "#7c3aed", "#6366f1", "#6d28d9", "#c084fc",
-    "#a78bfa", "#06b6d4", "#22d3ee", "#3b82f6", "#ec4899",
+    "#a855f7",
+    "#8b5cf6",
+    "#7c3aed",
+    "#6366f1",
+    "#6d28d9",
+    "#c084fc",
+    "#a78bfa",
+    "#06b6d4",
+    "#22d3ee",
+    "#3b82f6",
+    "#ec4899",
 )
 
 
@@ -77,7 +87,7 @@ def has_neon(body):
 
 
 def _px_values(body):
-    return [int(number) for number in re.findall(r"(\d+)px\b", body, re.I)]
+    return [int(number) for number in re.findall(r"(\d+)px\b", body, re.IGNORECASE)]
 
 
 def off_grid_guard(text, match):
@@ -90,38 +100,54 @@ def off_grid_guard(text, match):
 def same_hue_class_guard(value, match):
     """同色明度渐变（from-gray-900 to-gray-800）是 SKILL 明确允许的。"""
 
-    from_match = re.search(r"\bfrom-([a-z]+)-\d+\b", value, re.I)
-    to_match = re.search(r"\bto-([a-z]+)-\d+\b", value, re.I)
+    from_match = re.search(r"\bfrom-([a-z]+)-\d+\b", value, re.IGNORECASE)
+    to_match = re.search(r"\bto-([a-z]+)-\d+\b", value, re.IGNORECASE)
     return not (
-        from_match and to_match
+        from_match
+        and to_match
         and from_match.group(1).lower() == to_match.group(1).lower()
     )
 
 
 def has_class(value, name):
-    return re.search(r"\b" + re.escape(name) + r"\b", value, re.I) is not None
+    return re.search(r"\b" + re.escape(name) + r"\b", value, re.IGNORECASE) is not None
 
 
 def in_pseudo_element(text, match):
     """该声明是否落在 ::placeholder / ::selection 这类伪元素里。"""
 
-    head = text[max(0, match.start() - 240):match.start()]
+    head = text[max(0, match.start() - 240) : match.start()]
     brace = head.rfind("{")
     if brace < 0:
         return False
-    start = max(head.rfind("}", 0, brace), head.rfind(";", 0, brace),
-                head.rfind(">", 0, brace)) + 1
+    start = (
+        max(
+            head.rfind("}", 0, brace),
+            head.rfind(";", 0, brace),
+            head.rfind(">", 0, brace),
+        )
+        + 1
+    )
     selector = head[start:brace]
-    return bool(re.search(r"::?(?:placeholder|selection|-webkit-input-placeholder)\b",
-                          selector, re.I))
+    return bool(
+        re.search(
+            r"::?(?:placeholder|selection|-webkit-input-placeholder)\b",
+            selector,
+            re.IGNORECASE,
+        )
+    )
 
 
 def is_text_node_bang(text, match):
     """只认界面文本里的感叹号，排除 <!DOCTYPE、!important、!= 等语法符号。"""
 
     previous = text[match.start() - 1] if match.start() else ""
-    following = text[match.end():match.end() + 12].lstrip()
-    if previous in "<=" or following.startswith("=") or following.lower().startswith("important"):
+    following = text[match.end() : match.end() + 12].lstrip()
+    if (
+        previous in "<="
+        or following.startswith("=")
+        or following.lower().startswith("important")
+    ):
         return False
     left_angle = text.rfind("<", 0, match.start())
     right_angle = text.rfind(">", 0, match.start())
@@ -129,8 +155,10 @@ def is_text_node_bang(text, match):
 
 
 def unqualified_change_guard(text, match):
-    following_text = text[match.end():match.end() + 60]
-    return not re.search(r"\bvs\b|compared|last\s+\w+|previous|同比|环比", following_text, re.I)
+    following_text = text[match.end() : match.end() + 60]
+    return not re.search(
+        r"\bvs\b|compared|last\s+\w+|previous|同比|环比", following_text, re.IGNORECASE
+    )
 
 
 def number_format_guard(text, match):
@@ -139,37 +167,33 @@ def number_format_guard(text, match):
     amounts = re.findall(r"\$\s*\d[\d,]*(?:\.\d+)?", text)
     if not amounts:
         return False
-    decimals = {
-        len(amount.split(".")[1]) if "." in amount else 0
-        for amount in amounts
-    }
+    decimals = {len(amount.split(".")[1]) if "." in amount else 0 for amount in amounts}
     if len(decimals) > 1:
         return True
     return "tabular-nums" not in text
 
 
 def icon_inconsistent_guard(text, match):
-    svgs = re.findall(r"<svg\b[^>]*>", text, re.I)
-    widths = {
-        width
-        for svg in svgs
-        for width in re.findall(r'\bwidth="(\d+)"', svg)
-    }
+    svgs = re.findall(r"<svg\b[^>]*>", text, re.IGNORECASE)
+    widths = {width for svg in svgs for width in re.findall(r'\bwidth="(\d+)"', svg)}
     strokes = {
-        stroke
-        for svg in svgs
-        for stroke in re.findall(r'stroke-width="([\d.]+)"', svg)
+        stroke for svg in svgs for stroke in re.findall(r'stroke-width="([\d.]+)"', svg)
     }
     return len(widths) > 1 or len(strokes) > 1
 
 
 def too_many_actions_guard(text, match):
-    button_positions = [button.start() for button in re.finditer(r"<button\b", text, re.I)]
-    return len(button_positions) >= 3 and (button_positions[-1] - button_positions[0]) < 320
+    button_positions = [
+        button.start() for button in re.finditer(r"<button\b", text, re.IGNORECASE)
+    ]
+    return (
+        len(button_positions) >= 3
+        and (button_positions[-1] - button_positions[0]) < 320
+    )
 
 
 def rtl_guard(text, match):
-    return not re.search(r'\bdir\s*=\s*["\']rtl["\']', text, re.I)
+    return not re.search(r'\bdir\s*=\s*["\']rtl["\']', text, re.IGNORECASE)
 
 
 def trailing_period_guard(text, match):

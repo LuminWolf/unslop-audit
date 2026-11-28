@@ -13,24 +13,57 @@ import re
 import tree_sitter as ts
 import tree_sitter_typescript as tst
 
-from .views import ScanView
+from .types import ScanView, _line_starts
 
 CLASS_FNS = {"cx", "clsx", "classnames", "cn", "classNames"}
 _CAMEL_BOUNDARY = re.compile(r"(?<!^)(?=[A-Z])")
 _LENGTH_PROPS = {
-    "gap", "row-gap", "column-gap",
-    "padding", "padding-top", "padding-right", "padding-bottom", "padding-left",
-    "padding-inline", "padding-block",
-    "margin", "margin-top", "margin-right", "margin-bottom", "margin-left",
-    "margin-inline", "margin-block",
-    "height", "width", "min-height", "max-height", "min-width", "max-width",
-    "top", "right", "bottom", "left", "inset", "border-radius", "font-size",
+    "gap",
+    "row-gap",
+    "column-gap",
+    "padding",
+    "padding-top",
+    "padding-right",
+    "padding-bottom",
+    "padding-left",
+    "padding-inline",
+    "padding-block",
+    "margin",
+    "margin-top",
+    "margin-right",
+    "margin-bottom",
+    "margin-left",
+    "margin-inline",
+    "margin-block",
+    "height",
+    "width",
+    "min-height",
+    "max-height",
+    "min-width",
+    "max-width",
+    "top",
+    "right",
+    "bottom",
+    "left",
+    "inset",
+    "border-radius",
+    "font-size",
 }
 _MAX_DEPTH = 12
+_QUERY_SOURCE = """
+(variable_declarator
+  name: (identifier) @binding_name
+  value: (_) @binding_value)
+
+[
+  (jsx_element)
+  (jsx_self_closing_element)
+] @jsx
+"""
 
 
 def _text(node, source_bytes: bytes) -> str:
-    return source_bytes[node.start_byte:node.end_byte].decode("utf-8", "replace")
+    return source_bytes[node.start_byte : node.end_byte].decode("utf-8", "replace")
 
 
 def _byte_map(text: str) -> list[int]:
@@ -45,7 +78,7 @@ def _byte_map(text: str) -> list[int]:
 def _decode_escape(raw: str) -> str:
     try:
         return raw.encode("ascii").decode("unicode_escape")
-    except (UnicodeEncodeError, UnicodeDecodeError):
+    except UnicodeEncodeError, UnicodeDecodeError:
         return raw
 
 
@@ -56,7 +89,10 @@ def _named(node) -> list:
 def _unwrap(node):
     """透传包裹层：jsx_expression 与 parenthesized_expression。"""
 
-    while node is not None and node.type in ("jsx_expression", "parenthesized_expression"):
+    while node is not None and node.type in (
+        "jsx_expression",
+        "parenthesized_expression",
+    ):
         children = _named(node)
         if len(children) != 1:
             return None
@@ -64,8 +100,13 @@ def _unwrap(node):
     return node
 
 
-def resolve_expr(node, source_bytes: bytes, bindings: dict,
-                 depth: int = 0, seen: frozenset | None = None) -> str | None:
+def resolve_expr(
+    node,
+    source_bytes: bytes,
+    bindings: dict,
+    depth: int = 0,
+    seen: frozenset | None = None,
+) -> str | None:
     """保守解析表达式为可匹配的界面字符串；无法解析返回 None。"""
 
     if node is None or depth > _MAX_DEPTH:
@@ -192,103 +233,133 @@ def _resolve_pair(pair, source_bytes: bytes, bindings: dict) -> str | None:
     return f"{prop}: {value}"
 
 
-def _emit_jsx(node, source_bytes: bytes, byte_map: list[int],
-              bindings: dict, fragments: list) -> None:
-    if node.type == "jsx_self_closing_element":
-        opening = node
-    else:
-        opening = next(
-            (child for child in node.children
-             if child.type == "jsx_opening_element"),
-            None,
-        )
-    if opening is None:
-        return
+class TsxBuilder:
+    """持有 Language/Parser/Query/QueryCursor 构造 TSX AST 视图。"""
 
-    name_node = opening.child_by_field_name("name")
-    tag = _text(name_node, source_bytes) if name_node is not None else "div"
+    def __init__(self) -> None:
+        self.language = ts.Language(tst.language_tsx())
+        self.parser = ts.Parser(self.language)
+        self.query = ts.Query(self.language, _QUERY_SOURCE)
+        self.query_cursor = ts.QueryCursor(self.query)
 
-    for attribute in opening.children:
-        if attribute.type != "jsx_attribute":
-            continue
-        children = _named(attribute)
-        if len(children) < 2:
-            continue
-        attr_name = _text(children[0], source_bytes)
-        value_node = children[-1]
-        if attr_name == "className":
-            value = resolve_expr(value_node, source_bytes, bindings)
-            if value is not None:
-                fragments.append((
-                    f'class="{value}"', byte_map[value_node.start_byte]
-                ))
-        elif attr_name == "style":
-            object_node = _unwrap(value_node)
-            if object_node is None or object_node.type != "object":
+    def _emit_jsx(
+        self,
+        node,
+        source_bytes: bytes,
+        byte_map: list[int],
+        bindings: dict,
+        fragments: list,
+    ) -> None:
+        if node.type == "jsx_self_closing_element":
+            opening = node
+        else:
+            opening = next(
+                (
+                    child
+                    for child in node.children
+                    if child.type == "jsx_opening_element"
+                ),
+                None,
+            )
+        if opening is None:
+            return
+
+        name_node = opening.child_by_field_name("name")
+        tag = _text(name_node, source_bytes) if name_node is not None else "div"
+
+        for attribute in opening.children:
+            if attribute.type != "jsx_attribute":
                 continue
-            for pair in object_node.children:
-                if pair.type != "pair":
+            children = _named(attribute)
+            if len(children) < 2:
+                continue
+            attr_name = _text(children[0], source_bytes)
+            value_node = children[-1]
+            if attr_name == "className":
+                value = resolve_expr(value_node, source_bytes, bindings)
+                if value is not None:
+                    fragments.append(
+                        (f'class="{value}"', byte_map[value_node.start_byte])
+                    )
+            elif attr_name == "style":
+                object_node = _unwrap(value_node)
+                if object_node is None or object_node.type != "object":
                     continue
-                declaration = _resolve_pair(pair, source_bytes, bindings)
-                if declaration is not None:
-                    fragments.append((
-                        declaration, byte_map[pair.start_byte]
-                    ))
+                for pair in object_node.children:
+                    if pair.type != "pair":
+                        continue
+                    declaration = _resolve_pair(pair, source_bytes, bindings)
+                    if declaration is not None:
+                        fragments.append((declaration, byte_map[pair.start_byte]))
 
-    if node.type != "jsx_element":
-        return
-    parts = []
-    for child in node.children:
-        if child.type == "jsx_text":
-            parts.append(_text(child, source_bytes))
-        elif child.type == "jsx_expression":
-            value = resolve_expr(child, source_bytes, bindings)
-            if value is not None:
-                parts.append(value)
-    content = "".join(parts).strip()
-    if not content:
-        return
-    content = content.replace("<", "&lt;").replace(">", "&gt;")
-    fragments.append((f"<{tag}>{content}</{tag}>", byte_map[node.start_byte]))
+        if node.type != "jsx_element":
+            return
+        parts = []
+        for child in node.children:
+            if child.type == "jsx_text":
+                parts.append(_text(child, source_bytes))
+            elif child.type == "jsx_expression":
+                value = resolve_expr(child, source_bytes, bindings)
+                if value is not None:
+                    parts.append(value)
+        content = "".join(parts).strip()
+        if not content:
+            return
+        content = content.replace("<", "&lt;").replace(">", "&gt;")
+        fragments.append((f"<{tag}>{content}</{tag}>", byte_map[node.start_byte]))
 
+    def _collect(
+        self,
+        root_node,
+        source_bytes: bytes,
+        byte_map: list[int],
+        bindings: dict,
+        fragments: list,
+    ) -> None:
+        matches = self.query_cursor.matches(root_node)
+        matches.sort(
+            key=lambda match: min(
+                captured.start_byte
+                for nodes in match[1].values()
+                for captured in nodes
+            )
+        )
+        for _, captures in matches:
+            if "binding_name" in captures:
+                name_node = captures["binding_name"][0]
+                value_node = captures["binding_value"][0]
+                bindings.setdefault(_text(name_node, source_bytes), value_node)
+            elif "jsx" in captures:
+                self._emit_jsx(
+                    captures["jsx"][0], source_bytes, byte_map, bindings, fragments
+                )
 
-def _collect(node, source_bytes: bytes, byte_map: list[int],
-             bindings: dict, fragments: list) -> None:
-    if node.type == "variable_declarator":
-        name_node = node.child_by_field_name("name")
-        value_node = node.child_by_field_name("value")
-        if (name_node is not None and value_node is not None
-                and name_node.type == "identifier"):
-            bindings.setdefault(_text(name_node, source_bytes), value_node)
-    elif node.type in ("jsx_element", "jsx_self_closing_element"):
-        _emit_jsx(node, source_bytes, byte_map, bindings, fragments)
-    for child in node.children:
-        _collect(child, source_bytes, byte_map, bindings, fragments)
+    def build_tsx_view(self, text: str) -> ScanView | None:
+        """构造 TSX AST 视图；解析异常或语法错误返回 None 以触发回退。"""
 
-
-def build_tsx_view(text: str) -> ScanView | None:
-    """构造 TSX AST 视图；解析异常或语法错误返回 None 以触发回退。"""
-
-    try:
-        language = ts.Language(tst.language_tsx())
-        parser = ts.Parser(language)
-        source_bytes = text.encode("utf-8")
-        tree = parser.parse(source_bytes)
-        if tree.root_node.has_error:
+        try:
+            source_bytes = text.encode("utf-8")
+            tree = self.parser.parse(source_bytes)
+            if tree.root_node.has_error:
+                return None
+            byte_map = _byte_map(text)
+            bindings: dict = {}
+            fragments: list = []
+            self._collect(tree.root_node, source_bytes, byte_map, bindings, fragments)
+        except Exception:  # noqa: BLE001 - 解析失败时回退到文本视图是有意设计
             return None
-        byte_map = _byte_map(text)
-        bindings: dict = {}
-        fragments: list = []
-        _collect(tree.root_node, source_bytes, byte_map, bindings, fragments)
-    except Exception:
-        return None
 
-    chars = [char if char in "\r\n" else " " for char in text]
-    offsets = list(range(len(text)))
-    for fragment, source_offset in fragments:
-        # 每个片段独立成行，避免全文正则跨越片段边界产生误匹配。
-        offsets.append(source_offset)
-        chars.append("\n")
-        offsets.extend([source_offset] * len(fragment))
-        chars.extend(fragment)
-    return ScanView(text="".join(chars), source=text, offsets=offsets)
+        chars = [char if char in "\r\n" else " " for char in text]
+        offsets = list(range(len(text)))
+        for fragment, source_offset in fragments:
+            # 每个片段独立成行，避免全文正则跨越片段边界产生误匹配。
+            offsets.append(source_offset)
+            chars.append("\n")
+            offsets.extend([source_offset] * len(fragment))
+            chars.extend(fragment)
+        return ScanView(
+            text="".join(chars),
+            source=text,
+            offsets=offsets,
+            line_starts=_line_starts(text),
+        )

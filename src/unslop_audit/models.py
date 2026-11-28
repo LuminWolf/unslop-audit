@@ -55,4 +55,3 @@ class AuditReport:
     by_dimension: dict = field(default_factory=dict)
     by_severity: dict = field(default_factory=dict)
     findings: list = field(default_factory=list)
-    score: int = 100

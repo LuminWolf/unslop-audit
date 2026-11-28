@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 集成测试：对 tests/sample_slop.html 与 tests/sample_clean.html 做整页审计。
 
@@ -34,9 +33,12 @@ CLEAN = HERE / "sample_clean.html"
 _TMP = tempfile.mkdtemp(prefix="unslop-integration-test-")
 atexit.register(shutil.rmtree, _TMP, ignore_errors=True)
 
-_spec = importlib.util.spec_from_file_location("ai_ui_audit_integration_under_test", str(AUDIT_SCRIPT))
+_spec = importlib.util.spec_from_file_location(
+    "ai_ui_audit_integration_under_test", str(AUDIT_SCRIPT)
+)
 AUDIT = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(AUDIT)
+SCANNER = AUDIT.Scanner()
 
 
 def _subprocess_env():
@@ -47,35 +49,50 @@ def _subprocess_env():
 
 
 def run_cli(target, *extra):
-    csv_path = Path(_TMP) / ("%s.csv" % target.stem)
+    csv_path = Path(_TMP) / (f"{target.stem}.csv")
     command = [
-        sys.executable, str(AUDIT_SCRIPT), str(target),
-        "--csv", str(csv_path), *extra,
+        sys.executable,
+        str(AUDIT_SCRIPT),
+        str(target),
+        "--csv",
+        str(csv_path),
+        *extra,
     ]
     result = subprocess.run(
-        command, capture_output=True, text=True, encoding="utf-8",
-        cwd=str(ROOT), env=_subprocess_env(),
+        command,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        cwd=str(ROOT),
+        env=_subprocess_env(),
     )
     return result, csv_path
 
 
 class IntegrationTests(unittest.TestCase):
-
     def test_01_slop_covers_all_rules(self):
         """sample_slop.html 直接扫描必须覆盖全部声明规则 + emoji 兜底。"""
 
         declared = {rule.name for rule in AUDIT.RULES} | {"emoji-as-icon"}
-        hits = {f.pattern for f in AUDIT.scan_file(str(SLOP))}
-        self.assertEqual(declared - hits, set(),
-                         "sample_slop.html 未触发: %s" % sorted(declared - hits))
+        hits = {f.pattern for f in SCANNER.scan_file(str(SLOP))}
+        self.assertEqual(
+            declared - hits,
+            set(),
+            f"sample_slop.html 未触发: {sorted(declared - hits)}",
+        )
 
     def test_02_clean_has_zero_findings(self):
         """sample_clean.html 直接扫描必须零命中。"""
 
-        findings = AUDIT.scan_file(str(CLEAN))
-        self.assertEqual(findings, [],
-                         "sample_clean.html 意外命中: %s" %
-                         ", ".join("%s:%d" % (f.pattern, f.line) for f in findings))
+        findings = SCANNER.scan_file(str(CLEAN))
+        self.assertEqual(
+            findings,
+            [],
+            "sample_clean.html 意外命中: {}".format(
+                ", ".join(f"{f.pattern}:{f.line}" for f in findings)
+            ),
+        )
 
     def test_02b_clean_covers_all_rules(self):
         """sample_clean.html 必须为每条规则提供一处合规写法。"""
@@ -83,32 +100,35 @@ class IntegrationTests(unittest.TestCase):
         declared = {rule.name for rule in AUDIT.RULES} | {"emoji-as-icon"}
         source = CLEAN.read_text(encoding="utf-8")
         marked = set(re.findall(r"rule:\s*([\w-]+)", source))
-        self.assertEqual(declared - marked, set(),
-                         "sample_clean.html 缺少合规写法: %s" %
-                         sorted(declared - marked))
-        self.assertEqual(marked - declared, set(),
-                         "sample_clean.html 含未知规则标记: %s" %
-                         sorted(marked - declared))
+        self.assertEqual(
+            declared - marked,
+            set(),
+            f"sample_clean.html 缺少合规写法: {sorted(declared - marked)}",
+        )
+        self.assertEqual(
+            marked - declared,
+            set(),
+            f"sample_clean.html 含未知规则标记: {sorted(marked - declared)}",
+        )
 
-    def test_03_slop_cli_json_and_score(self):
-        """脏页 CLI：exit 0、纯 JSON、低分、维度齐全。"""
+    def test_03_slop_cli_json(self):
+        """脏页 CLI：exit 0、纯 JSON、有 finding、维度齐全。"""
 
         result, _ = run_cli(SLOP, "--json")
         self.assertEqual(result.returncode, 0, result.stderr)
         report = json.loads(result.stdout)  # 纯 JSON，无 PASS/FAIL 污染
         self.assertGreater(report["total_findings"], 0)
-        self.assertLess(report["score"], 40)
-        self.assertEqual(set(report["by_dimension"]),
-                         {d.value for d in AUDIT.Dimension})
+        self.assertEqual(
+            set(report["by_dimension"]), {d.value for d in AUDIT.Dimension}
+        )
 
-    def test_04_clean_cli_json_and_score(self):
-        """干净页 CLI：exit 0、纯 JSON、零 finding、满分。"""
+    def test_04_clean_cli_json(self):
+        """干净页 CLI：exit 0、纯 JSON、零 finding。"""
 
         result, _ = run_cli(CLEAN, "--json")
         self.assertEqual(result.returncode, 0, result.stderr)
         report = json.loads(result.stdout)
         self.assertEqual(report["total_findings"], 0)
-        self.assertEqual(report["score"], 100)
 
     def test_05_fail_on_gate(self):
         """--fail-on 门禁：脏页 exit 2，干净页 exit 0，stdout 始终纯 JSON。"""
@@ -142,11 +162,13 @@ class IntegrationTests(unittest.TestCase):
         """finding 行号必须落在 sample_slop.html 的实际行数内。"""
 
         total_lines = len(SLOP.read_text(encoding="utf-8").splitlines())
-        for finding in AUDIT.scan_file(str(SLOP)):
+        for finding in SCANNER.scan_file(str(SLOP)):
             self.assertGreaterEqual(finding.line, 1)
-            self.assertLessEqual(finding.line, total_lines,
-                                 "%s 行号 %d 超出 %d" %
-                                 (finding.pattern, finding.line, total_lines))
+            self.assertLessEqual(
+                finding.line,
+                total_lines,
+                f"{finding.pattern} 行号 {finding.line} 超出 {total_lines}",
+            )
 
     def test_08_severity_and_dimension_totals(self):
         """严重级别与维度分桶之和等于 finding 总数，统计不虚高。"""

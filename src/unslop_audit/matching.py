@@ -2,11 +2,11 @@
 
 import re
 
-from .views import ScanView
+from .types import ScanView
 
 
 CLASS_ATTR = re.compile(
-    r'(?:class|className)\s*=\s*(["\'])(.*?)\1', re.I | re.S
+    r'(?:class|className)\s*=\s*(["\'])(.*?)\1', re.IGNORECASE | re.DOTALL
 )
 
 
@@ -17,7 +17,7 @@ class Matcher:
     text 是已屏蔽注释但长度/行号与原文一致的字符串。
     """
 
-    def __init__(self, regex, flags=re.I, guard=None):
+    def __init__(self, regex, flags=re.IGNORECASE, guard=None):
         self.regex = re.compile(regex, flags)
         self.guard = guard
 
@@ -36,13 +36,16 @@ class ClassMatcher:
     """
 
     def __init__(self, regex, guard=None):
-        self.regex = re.compile(regex, re.I)
+        self.regex = re.compile(regex, re.IGNORECASE)
         self.guard = guard
 
     def find(self, text):
         target = text.text if isinstance(text, ScanView) else text
         for attribute_match in CLASS_ATTR.finditer(target):
-            attribute_value, base_offset = attribute_match.group(2), attribute_match.start(2)
+            attribute_value, base_offset = (
+                attribute_match.group(2),
+                attribute_match.start(2),
+            )
             for match in self.regex.finditer(attribute_value):
                 if self.guard is None or self.guard(attribute_value, match):
                     yield base_offset + match.start(), base_offset + match.end()
@@ -54,7 +57,7 @@ def mask_comments(text):
     if "/*" not in text and "<!--" not in text:
         return text
     masked = list(text)
-    for comment_match in re.finditer(r"/\*.*?\*/|<!--.*?-->", text, re.S):
+    for comment_match in re.finditer(r"/\*.*?\*/|<!--.*?-->", text, re.DOTALL):
         for index in range(comment_match.start(), comment_match.end()):
             if masked[index] not in "\r\n":
                 masked[index] = " "
