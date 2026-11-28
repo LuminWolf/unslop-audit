@@ -1,4 +1,8 @@
 /tmp/
 /deprecated/
 
+dist/
+node_modules/
+src/slop-audit/dist/
+
 __pycache__/

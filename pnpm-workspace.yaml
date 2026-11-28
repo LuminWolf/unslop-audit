@@ -1,0 +1,4 @@
+packages:
+  - "src/slop-audit"
+allowBuilds:
+  esbuild: true

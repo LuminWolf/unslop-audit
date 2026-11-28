@@ -1,0 +1,23 @@
+{
+  "name": "unslop-audit",
+  "version": "1.0.0",
+  "private": true,
+  "description": "",
+  "scripts": {
+    "build": "pnpm --filter slop-audit build",
+    "test": "pnpm --filter slop-audit test",
+    "lint": "pnpm --filter slop-audit lint"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "12.23.0",
+      "onFail": "download"
+    }
+  },
+  "packageManager": "pnpm@12.23.0",
+  "type": "module"
+}

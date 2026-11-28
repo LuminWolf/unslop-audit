@@ -1,0 +1,25 @@
+{
+  "name": "slop-audit",
+  "version": "0.1.0",
+  "description": "oxlint plugin for static JS/TS/JSX/TSX UI slop checks",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "lint": "oxlint --config ../../.oxlintrc.json ."
+  },
+  "dependencies": {
+    "@oxlint/plugins": "^1.94.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "oxlint": "^1.94.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}
