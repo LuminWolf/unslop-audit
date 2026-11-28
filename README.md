@@ -10,4 +10,3 @@
 - Checklist 的语义项：one bright element / quiet chrome / clear idea、accent 4.5:1 对比度、
   nested radius 计算、table row states、hero 整体构图、chart hierarchy、focus ring、
   signature detail、template check
-- 分数（10/5/2/1 × 3）是脚本自定义权重，SKILL 本身没有"分数"概念
